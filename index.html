@@ -3,13 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Smart Pantry Prototype</title>
+<title>Smart Pantry - Prototype</title>
 <style>
 body{font-family:system-ui,-apple-system,sans-serif;margin:0;padding:16px;background:#f2f4f7;color:#111;}
 .wrap{max-width:960px;margin:auto;}
 header{display:flex;align-items:center;gap:12px;flex-wrap:wrap;}
 header h1{margin:0;font-size:20px;}
 .card{background:#fafafa;border-radius:10px;padding:12px;box-shadow:0 1px 4px rgba(0,0,0,0.06);margin-bottom:12px;}
+video{width:100%;border-radius:8px;background:#000;}
 button{background:#333;color:#fff;border:none;padding:6px 10px;border-radius:6px;cursor:pointer;}
 .small{font-size:13px;color:#666;}
 .history-item,.inv-item{display:flex;gap:10px;align-items:center;padding:8px;border-radius:8px;margin-bottom:8px;background:white;}
@@ -22,7 +23,6 @@ button{background:#333;color:#fff;border:none;padding:6px 10px;border-radius:6px
 .modal-content label{display:block;margin-top:8px;}
 .modal-close{position:absolute;top:8px;right:8px;cursor:pointer;font-weight:bold;}
 .location-img{width:40px;height:40px;object-fit:cover;border-radius:6px;margin-left:4px;}
-#scanner-container{width:100%;height:240px;background:#000;border-radius:8px;position:relative;}
 #camera-error{color:red;text-align:center;padding:12px;}
 </style>
 </head>
@@ -34,8 +34,8 @@ button{background:#333;color:#fff;border:none;padding:6px 10px;border-radius:6px
 </header>
 
 <div class="card">
-  <div id="scanner-container"></div>
-  <div id="camera-error" class="small">Initializing camera...</div>
+<video id="video" playsinline autoplay></video>
+<div id="camera-error" class="small"></div>
 </div>
 
 <div class="card" id="product-info"><div class="small center">Scan a barcode to begin</div></div>
@@ -48,7 +48,6 @@ button{background:#333;color:#fff;border:none;padding:6px 10px;border-radius:6px
 <div class="card">
 <h3>Inventory</h3>
 <div id="inventory-list"></div>
-</div>
 </div>
 
 <div class="modal" id="modal">
@@ -74,7 +73,7 @@ button{background:#333;color:#fff;border:none;padding:6px 10px;border-radius:6px
 
 <script src="https://unpkg.com/quagga/dist/quagga.min.js"></script>
 <script>
-const scannerContainer=document.getElementById('scanner-container');
+const video=document.getElementById('video');
 const cameraError=document.getElementById('camera-error');
 const E={
   historyList:document.getElementById('history-list'),
@@ -95,14 +94,14 @@ let scanHistory=JSON.parse(localStorage.getItem('scanHistory')||'[]');
 let inventory=JSON.parse(localStorage.getItem('inventory')||'[]');
 let editIndex=null;
 
-// Save
+// Save localStorage
 function saveData(){localStorage.setItem('scanHistory',JSON.stringify(scanHistory));localStorage.setItem('inventory',JSON.stringify(inventory));}
 
 // Current date/time
 function updateTime(){document.getElementById('current-time').textContent='Current: '+new Date().toLocaleString();}
 setInterval(updateTime,1000); updateTime();
 
-// Color
+// Color coding for expiry/quantity
 function colorForItem(item){
   const days=item.expiry?Math.round((new Date(item.expiry)-new Date())/(24*60*60*1000)):null;
   if((days!==null && days<0) || item.quantity<=0) return 'color-bad';
@@ -110,7 +109,7 @@ function colorForItem(item){
   return 'color-good';
 }
 
-// Render history
+// Render scan history
 function renderHistory(){
   E.historyList.innerHTML=scanHistory.length?scanHistory.map((h,i)=>`
     <div class="history-item">
@@ -122,12 +121,7 @@ function renderHistory(){
       </div>
     </div>`).join(''):'<div class="small">No scans yet</div>';
 }
-function removeHistory(idx){
-  if(confirm(`Remove "${scanHistory[idx].title}" from scan history?`)){
-    scanHistory.splice(idx,1);
-    saveData(); renderHistory();
-  }
-}
+function removeHistory(idx){if(confirm(`Remove "${scanHistory[idx].title}" from scan history?`)){scanHistory.splice(idx,1);saveData();renderHistory();}}
 
 // Render inventory
 function renderInventory(){
@@ -151,37 +145,27 @@ function renderInventory(){
   }).join(''):'<div class="small">Inventory empty</div>';
 }
 
-// Add/Remove inventory
+// Add / remove inventory
 function addToInventory(idx){
   const hist=scanHistory[idx];
   const found=inventory.find(i=>i.barcode===hist.barcode);
-  if(found){found.quantity=(found.quantity||0)+1;}
+  if(found){found.quantity=(found.quantity||0)+1;} 
   else {inventory.unshift({...hist,quantity:1,expiry:randomExpiry(),image:hist.image||'https://via.placeholder.com/56',location:'Fridge',locationImage:'https://via.placeholder.com/40'});}
   saveData(); renderInventory(); notifyIfExpiring(inventory.find(i=>i.barcode===hist.barcode));
 }
-function removeItem(idx){
-  if(confirm(`Remove "${inventory[idx].title}" from inventory?`)){
-    inventory.splice(idx,1);
-    saveData(); renderInventory();
-  }
-}
+function removeItem(idx){if(confirm(`Remove "${inventory[idx].title}" from inventory?`)){inventory.splice(idx,1);saveData();renderInventory();}}
 
-// Random expiry
-function randomExpiry(){
-  const d=new Date(); d.setDate(d.getDate()+Math.floor(Math.random()*14)+1);
-  return d.toISOString().split('T')[0];
-}
+// Random expiry 1-14 days
+function randomExpiry(){const d=new Date(); d.setDate(d.getDate()+Math.floor(Math.random()*14)+1); return d.toISOString().split('T')[0];}
 
 // Notifications
 function notifyIfExpiring(item){
   const days=item.expiry?Math.round((new Date(item.expiry)-new Date())/(24*60*60*1000)):null;
-  if(days!==null && days<=2){
-    if(Notification.permission==="granted"){new Notification('Item Expiring Soon',{body:`${item.title} expires in ${days} day(s)`});}
-  }
+  if(days!==null && days<=2){if(Notification.permission==="granted"){new Notification('Item Expiring Soon',{body:`${item.title} expires in ${days} day(s)`});}}
 }
 if(Notification.permission!=="granted") Notification.requestPermission();
 
-// Modal
+// Modal edit
 function openModal(idx){
   editIndex=idx; const item=inventory[idx];
   E.modalTitle.value=item.title;
@@ -206,15 +190,15 @@ E.modalSave.onclick=()=>{
   saveData(); E.modal.style.display='none'; renderInventory();
 };
 
-// Quagga scanning
-function startScanner(){
-  Quagga.init({
-    inputStream:{name:"Live",type:"LiveStream",target:scannerContainer,constraints:{facingMode:"environment"}},
-    decoder:{readers:["ean_reader","upc_reader"]}
-  }, function(err){
-    if(err){console.error(err); cameraError.textContent="Scanner failed"; return;}
-    Quagga.start();
-  });
+// Quagga scanner (unchanged from working version)
+function startCamera(){
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){cameraError.textContent="Camera not supported"; return;}
+  navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}})
+    .then(stream=>{video.srcObject=stream; initQuagga();})
+    .catch(err=>{console.error(err);cameraError.textContent="Camera access denied";});
+}
+function initQuagga(){
+  Quagga.init({inputStream:{name:"Live",type:"LiveStream",target:video,constraints:{facingMode:"environment"}},decoder:{readers:["ean_reader","upc_reader"]}},function(err){if(err){console.error(err);cameraError.textContent="Scanner failed";return;}Quagga.start();});
   let lastDetected=null;
   Quagga.onDetected(result=>{
     const code=result?.codeResult?.code; if(!code) return;
@@ -231,9 +215,7 @@ function startScanner(){
 }
 
 // Initialize
-startScanner();
-renderHistory();
-renderInventory();
+startCamera(); renderHistory(); renderInventory();
 </script>
 </body>
 </html>
