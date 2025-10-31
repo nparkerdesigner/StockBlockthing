@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Smart Pantry - Full Prototype</title>
+<title>Smart Pantry Prototype</title>
 <style>
 body{font-family:system-ui,-apple-system,sans-serif;margin:0;padding:16px;background:#f2f4f7;color:#111;}
 .wrap{max-width:960px;margin:auto;}
@@ -12,7 +12,6 @@ header h1{margin:0;font-size:20px;}
 .card{background:#fafafa;border-radius:10px;padding:12px;box-shadow:0 1px 4px rgba(0,0,0,0.06);margin-bottom:12px;}
 video{width:100%;border-radius:8px;background:#000;}
 button{background:#333;color:#fff;border:none;padding:6px 10px;border-radius:6px;cursor:pointer;}
-button.buy{background:green;}
 .small{font-size:13px;color:#666;}
 .history-item,.inv-item{display:flex;gap:10px;align-items:center;padding:8px;border-radius:8px;margin-bottom:8px;background:white;}
 .history-item img,.inv-item img{width:56px;height:56px;object-fit:cover;border-radius:6px;}
@@ -23,8 +22,8 @@ button.buy{background:green;}
 .modal-content{background:#fff;padding:16px;border-radius:10px;width:90%;max-width:400px;position:relative;}
 .modal-content label{display:block;margin-top:8px;}
 .modal-close{position:absolute;top:8px;right:8px;cursor:pointer;font-weight:bold;}
-#camera-error{color:red;text-align:center;padding:12px;}
 .location-img{width:40px;height:40px;object-fit:cover;border-radius:6px;margin-left:4px;}
+#camera-error{color:red;text-align:center;padding:12px;}
 </style>
 </head>
 <body>
@@ -51,10 +50,6 @@ button.buy{background:green;}
 <div id="inventory-list"></div>
 </div>
 
-<div class="card">
-<h3>Deals & Flyers</h3>
-<div id="deals"></div>
-</div>
 </div>
 
 <div class="modal" id="modal">
@@ -85,7 +80,6 @@ const cameraError=document.getElementById('camera-error');
 const E={
   historyList:document.getElementById('history-list'),
   inventoryList:document.getElementById('inventory-list'),
-  deals:document.getElementById('deals'),
   modal:document.getElementById('modal'),
   modalClose:document.getElementById('modal-close'),
   modalSave:document.getElementById('modal-save'),
@@ -159,12 +153,6 @@ function renderInventory(){
       </div>
     </div>`;
   }).join(''):'<div class="small">Inventory empty</div>';
-  renderDeals();
-}
-
-// Render deals
-function renderDeals(){
-  E.deals.innerHTML=inventory.map(i=>`<div>💰 ${i.title} - <a href="https://flipp.com/search?q=${encodeURIComponent(i.title)}" target="_blank"><button class="buy">Buy Now</button></a></div>`).join('') || 'No items';
 }
 
 // Add to inventory
@@ -186,7 +174,7 @@ function removeItem(idx){
   }
 }
 
-// Random expiry for prototyping (1–14 days from today)
+// Random expiry for prototyping (1–14 days)
 function randomExpiry(){
   const d=new Date();
   d.setDate(d.getDate()+Math.floor(Math.random()*14)+1);
@@ -250,7 +238,6 @@ function initQuagga(){
     if(code===lastDetected) return; lastDetected=code; setTimeout(()=>lastDetected=null,1500);
     const exists=scanHistory.find(h=>h.barcode===code);
     if(!exists){
-      // Auto-generate info for prototyping
       const title="Product "+code;
       const brand="Brand "+Math.floor(Math.random()*10+1);
       const image="https://via.placeholder.com/56";
