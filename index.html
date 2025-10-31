@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Smart Pantry</title>
+<style>
+body{font-family:system-ui,-apple-system,sans-serif;margin:0;padding:16px;background:#f2f4f7;color:#111;}
+.wrap{max-width:960px;margin:auto;}
+header{display:flex;align-items:center;gap:12px;}
+header h1{margin:0;font-size:20px;}
+.card{background:#fafafa;border-radius:10px;padding:12px;box-shadow:0 1px 4px rgba(0,0,0,0.06);margin-bottom:12px;}
+video{width:100%;border-radius:8px;background:#000;}
+button{background:#333;color:#fff;border:none;padding:8px 10px;border-radius:6px;cursor:pointer;}
+button.ghost{background:transparent;color:#333;border:1px solid #ddd;}
+.small{font-size:13px;color:#666;}
+.history-item,.inv-item{display:flex;gap:10px;align-items:center;padding:8px;border-radius:8px;margin-bottom:8px;background:white;}
+.history-item img,.inv-item img{width:56px;height:56px;object-fit:cover;border-radius:6px;}
+.color-good{background:#d4f7d4;}
+.color-warn{background:#fff3cd;}
+.color-bad{background:#ffd6d6;}
+.modal{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.4);justify-content:center;align-items:center;}
+.modal-content{background:#fff;padding:16px;border-radius:10px;width:90%;max-width:400px;position:relative;}
+.modal-content label{display:block;margin-top:8px;}
+.modal-close{position:absolute;top:8px;right:8px;cursor:pointer;font-weight:bold;}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header><h1>📦 Smart Pantry</h1><div class="small">Scan, track expiry, recipes & deals</div></header>
+
+<div class="card"><video id="video" playsinline autoplay></video></div>
+
+<div class="card" id="product-info"><div class="small center">Scan a barcode to begin</div></div>
+
+<div class="card">
+<h3>Scan History</h3>
+<div id="history-list"></div>
+</div>
+
+<div class="card">
+<h3>Inventory</h3>
+<button onclick="exportCSV()">Export CSV</button>
+<input type="file" id="importCSV" accept=".csv">
+<div id="inventory-list"></div>
+</div>
+
+<div class="card">
+<h3>Recipes for Soon-to-Expire Items</h3>
+<div id="recipes" class="small">No suggestions yet.</div>
+</div>
+
+<div class="card">
+<h3>Deals & Flyers</h3>
+<div id="deals" class="small">Click an item to search deals.</div>
+</div>
+</div>
+
+<div class="modal" id="modal">
+<div class="modal-content">
+<span class="modal-close" id="modal-close">&times;</span>
+<h3 id="modal-title">Edit Item</h3>
+<label>Title: <input type="text" id="modal-item-title"></label>
+<label>Brand: <input type="text" id="modal-item-brand"></label>
+<label>Quantity: <input type="number" id="modal-item-qty"></label>
+<label>Expiry: <input type="date" id="modal-item-expiry"></label>
+<label>Image URL: <input type="text" id="modal-item-image"></label>
+<button id="modal-save">Save</button>
+</div>
+</div>
+
+<script src="https://unpkg.com/quagga/dist/quagga.min.js"></script>
+<script>
+const SPOONACULAR_API_KEY = 'YOUR_API_KEY_HERE'; // Replace with your key
+
+// Helpers
+const get=(k,f)=>{try{return JSON.parse(localStorage.getItem(k))??f}catch(e){return f}};
+const set=(k,v)=>localStorage.setItem(k,JSON.stringify(v));
+
+const E={video:document.getElementById('video'),productInfo:document.getElementById('product-info'),historyList:document.getElementById('history-list'),inventoryList:document.getElementById('inventory-list'),recipes:document.getElementById('recipes'),deals:document.getElementById('deals'),modal:document.getElementById('modal'),modalTitle:document.getElementById('modal-title'),modalClose:document.getElementById('modal-close'),modalSave:document.getElementById('modal-save'),modalItemTitle:document.getElementById('modal-item-title'),modalItemBrand:document.getElementById('modal-item-brand'),modalItemQty:document.getElementById('modal-item-qty'),modalItemExpiry:document.getElementById('modal-item-expiry'),modalItemImage:document.getElementById('modal-item-image')};
+
+let currentEditIndex=null;
+
+function colorForItem(item){
+  const days=item.expiry?Math.round((new Date(item.expiry)-new Date())/(24*60*60*1000)):null;
+  if((days!==null && days<0)||item.quantity<=0) return 'color-bad';
+  if((days!==null && days<=3)||item.quantity<=2) return 'color-warn';
+  return 'color-good';
+}
+
+function renderHistory(){
+  const arr=get('scanHistory',[]);
+  E.historyList.innerHTML=arr.length?arr.map((h,idx)=>`<div class="history-item">
+    <div style="flex:1"><strong>${h.title}</strong><div class="small">UPC:${h.barcode}</div></div>
+    <div><button onclick='addToInventory(${idx})'>Add</button></div>
+  </div>`).join(''):'<div class="small">No scans yet</div>';
+}
+
+function renderInventory(){
+  const inv=get('inventory',[]);
+  E.inventoryList.innerHTML=inv.length?inv.map((item,idx)=>{
+    const cls=colorForItem(item);
+    return `<div class="inv-item ${cls}">
+      ${item.image?`<img src="${item.image}">`:`<div style="width:56px;height:56px;background:#eee;border-radius:6px;display:flex;align-items:center;justify-content:center">?</div>`}
+      <div style="flex:1"><strong>${item.title}</strong><div class="small">${item.brand||''}</div><div class="small">Qty:${item.quantity} Exp:${item.expiry||'—'}</div></div>
+      <div><button onclick="openModal(${idx})">Edit</button></div>
+    </div>`;
+  }).join(''):'<div class="small">Inventory empty</div>';
+}
+
+// Modal
+function openModal(idx){
+  currentEditIndex=idx;
+  const item=get('inventory',[])[idx];
+  E.modalItemTitle.value=item.title;
+  E.modalItemBrand.value=item.brand||'';
+  E.modalItemQty.value=item.quantity||1;
+  E.modalItemExpiry.value=item.expiry||'';
+  E.modalItemImage.value=item.image||'';
+  E.modal.style.display='flex';
+}
+
+E.modalClose.onclick=()=>{E.modal.style.display='none';}
+E.modalSave.onclick=()=>{
+  const inv=get('inventory',[]);
+  const item=inv[currentEditIndex];
+  item.title=E.modalItemTitle.value;
+  item.brand=E.modalItemBrand.value;
+  item.quantity=parseInt(E.modalItemQty.value)||1;
+  item.expiry=E.modalItemExpiry.value||null;
+  item.image=E.modalItemImage.value||'';
+  set('inventory',inv);
+  E.modal.style.display='none';
+  renderInventory();
+  refreshRecipes(); refreshDeals();
+}
+
+// Add to inventory
+function addToInventory(idx){
+  const hist=get('scanHistory',[])[idx];
+  const inv=get('inventory',[]);
+  const found=inv.find(i=>i.barcode===hist.barcode);
+  if(found){found.quantity=(found.quantity||0)+1;}else{inv.unshift({...hist,quantity:1,expiry:null});}
+  set('inventory',inv);
+  renderInventory();
+  refreshRecipes(); refreshDeals();
+}
+
+// Scanner
+Quagga.init({inputStream:{name:"Live",type:"LiveStream",target:E.video,constraints:{facingMode:"environment"}},decoder:{readers:["ean_reader","upc_reader"]},locate:true},function(err){if(err){console.error(err);return;}Quagga.start();});
+
+let lastDetected=null;
+Quagga.onDetected(result=>{
+  const code=result?.codeResult?.code; if(!code) return;
+  if(code===lastDetected) return; lastDetected=code; setTimeout(()=>lastDetected=null,1500);
+  E.productInfo.innerHTML=`<div>UPC: ${code}<br><button onclick="manualAdd('${code}')">Add manually</button></div>`;
+  const hist=get('scanHistory',[]);
+  if(!hist.find(h=>h.barcode===code)){hist.unshift({barcode:code,title:'Product '+code});set('scanHistory',hist);renderHistory();}
+});
+
+function manualAdd(code){
+  const hist=get('scanHistory',[]);
+  if(!hist.find(h=>h.barcode===code)){hist.unshift({barcode:code,title:'Product '+code});set('scanHistory',hist);renderHistory();}
+}
+
+// Recipes
+async function fetchRecipes(title){
+  if(!SPOONACULAR_API_KEY) return `https://www.google.com/search?q=${encodeURIComponent(title+' recipe')}`;
+  const res=await fetch(`https://api.spoonacular.com/recipes/complexSearch?query=${encodeURIComponent(title)}&number=3&apiKey=${SPOONACULAR_API_KEY}`);
+  const data=await res.json();
+  return data.results.map(r=>({title:r.title,url:r.sourceUrl,image:r.image}));
+}
+
+async function refreshRecipes(){
+  const inv=get('inventory',[]);
+  let html='';
+  for(const i of inv){
+    if(i.expiry){
+      const days=Math.round((new Date(i.expiry)-new Date())/(24*60*60*1000));
+      if(days<=5){
+        let items=await fetchRecipes(i.title);
+        if(!Array.isArray(items)) html+=`<div>🍳 <a href="${items}" target="_blank">${i.title} recipes</a></div>`;
+        else html+=items.map(r=>`<div>🍳 <a href="${r.url}" target="_blank">${r.title}</a> <img src="${r.image}" width="60"></div>`).join('');
+      }
+    }
+  }
+  E.recipes.innerHTML=html||'No soon-to-expire items';
+}
+
+// Deals
+function refreshDeals(){
+  const inv=get('inventory',[]);
+  E.deals.innerHTML=inv.map(i=>`<div>💰 <a href="https://flipp.com/search?q=${encodeURIComponent(i.title)}" target="_blank">${i.title} deals</a></div>`).join('')||'No items';
+}
+
+// Notifications
+function notifyLowStock(item){
+  if(Notification.permission==="granted"){new Notification('Low Stock',{body:`${item.title} is low! Qty:${item.quantity}`});}
+}
+if(Notification.permission!=="granted") Notification.requestPermission();
+
+// CSV
+function exportCSV(){
+  const inv=get('inventory',[]);
+  const csv='Title,Brand,Quantity,Expiry,Image,Barcode\n'+inv.map(i=>[i.title,i.brand,i.quantity,i.expiry,i.image,i.barcode||''].map(v=>`"${v}"`).join(',')).join('\n');
+  const a=document.createElement('a'); a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv); a.download='inventory.csv'; a.click();
+}
+
+document.getElementById('importCSV').addEventListener('change',function(e){
+  const file=e.target.files[0]; if(!file)return;
+  const reader=new FileReader();
+  reader.onload=function(ev){
+    const lines=ev.target.result.split(/\r?\n/); const inv=[];
+    lines.slice(1).forEach(l=>{if(l.trim()){const [title,brand,quantity,expiry,image,barcode]=l.split(','); inv.push({title:title.replace(/"/g,''),brand:brand.replace(/"/g,''),quantity:parseInt(quantity)||1,expiry:expiry.replace(/"/g,''),image:image.replace(/"/g,''),barcode:barcode.replace(/"/g,'')});}});
+    set('inventory',inv); renderInventory(); refreshRecipes(); refreshDeals();
+  }; reader.readAsText(file);
+});
+
+// Periodic checks
+setInterval(()=>{const inv=get('inventory',[]); inv.forEach(i=>{if(i.quantity<=2) notifyLowStock(i);}); renderInventory(); refreshRecipes(); refreshDeals();},5000);
+
+// Initial render
+
+renderHistory(); renderInventory(); refreshRecipes(); refreshDeals();
+</script>
+</body>
+</html>
