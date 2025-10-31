@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Smart Pantry - Working Camera</title>
+<title>Smart Pantry - Real Products</title>
 <style>
 body{font-family:system-ui,-apple-system,sans-serif;margin:0;padding:16px;background:#f2f4f7;color:#111;}
 .wrap{max-width:960px;margin:auto;}
@@ -27,7 +27,7 @@ button{background:#333;color:#fff;border:none;padding:8px 10px;border-radius:6px
 </head>
 <body>
 <div class="wrap">
-<header><h1>📦 Smart Pantry</h1><div class="small">Scan and track your items</div></header>
+<header><h1>📦 Smart Pantry</h1><div class="small">Scan, track expiry & inventory</div></header>
 
 <div class="card">
 <video id="video" playsinline autoplay></video>
@@ -97,7 +97,8 @@ function colorForItem(item){
 function renderHistory(){
   E.historyList.innerHTML=scanHistory.length?scanHistory.map((h,i)=>`
     <div class="history-item">
-      <div style="flex:1"><strong>${h.title}</strong><div class="small">UPC:${h.barcode}</div></div>
+      ${h.image?`<img src="${h.image}">`:`<div style="width:56px;height:56px;background:#eee;border-radius:6px;display:flex;align-items:center;justify-content:center">?</div>`}
+      <div style="flex:1"><strong>${h.title}</strong><div class="small">${h.brand||''}</div><div class="small">UPC:${h.barcode}</div></div>
       <div><button onclick="addToInventory(${i})">Add</button></div>
     </div>`).join(''):'<div class="small">No scans yet</div>';
 }
@@ -116,7 +117,8 @@ function renderInventory(){
 function addToInventory(idx){
   const hist=scanHistory[idx];
   const found=inventory.find(i=>i.barcode===hist.barcode);
-  if(found){found.quantity=(found.quantity||0)+1;} else {inventory.unshift({...hist,quantity:1,expiry:null,image:''});}
+  if(found){found.quantity=(found.quantity||0)+1;} 
+  else {inventory.unshift({...hist,quantity:1,expiry:null,image:hist.image||''});}
   saveData(); renderInventory();
 }
 
@@ -143,7 +145,7 @@ E.modalSave.onclick=()=>{
   renderInventory();
 }
 
-// Quagga Scanner
+// Quagga Scanner with OpenFoodFacts
 function initQuagga(){
   Quagga.init({
     inputStream:{
@@ -159,13 +161,23 @@ function initQuagga(){
   });
 
   let last=null;
-  Quagga.onDetected(r=>{
+  Quagga.onDetected(async r=>{
     const code=r?.codeResult?.code;
     if(!code || code===last) return;
-    last=code;
-    setTimeout(()=>last=null,1500);
+    last=code; setTimeout(()=>last=null,1500);
+
     if(!scanHistory.find(h=>h.barcode===code)){
-      scanHistory.unshift({barcode:code,title:'Product '+code});
+      let product={barcode:code,title:'Product '+code,brand:'',image:''};
+      try{
+        const res = await fetch(`https://world.openfoodfacts.org/api/v0/product/${code}.json`);
+        const data = await res.json();
+        if(data.status===1){
+          product.title = data.product.product_name || product.title;
+          product.brand = data.product.brands || '';
+          product.image = data.product.image_front_small_url || '';
+        }
+      }catch(err){console.warn('Fetch failed',err);}
+      scanHistory.unshift(product);
       saveData();
       renderHistory();
     }
@@ -174,23 +186,25 @@ function initQuagga(){
 
 // Camera
 function startCamera(){
-  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){cameraError.textContent="Camera not supported"; return;}
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    cameraError.textContent="Camera not supported"; return;
+  }
   navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}})
-  .then(stream=>{
-    video.srcObject=stream;
-    video.onloadedmetadata = ()=>{
-      video.play();
-      cameraError.textContent="";
-      initQuagga();
-    };
-  })
-  .catch(err=>{
-    console.error(err);
-    cameraError.textContent="Camera access denied";
-  });
+    .then(stream=>{
+      video.srcObject=stream;
+      video.onloadedmetadata=()=>{
+        video.play();
+        cameraError.textContent="";
+        initQuagga();
+      };
+    })
+    .catch(err=>{
+      console.error(err);
+      cameraError.textContent="Camera access denied";
+    });
 }
 
-// --- INIT ---
+// INIT
 startCamera();
 renderHistory();
 renderInventory();
