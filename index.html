@@ -74,8 +74,9 @@ button{background:#333;color:#fff;border:none;padding:8px 10px;border-radius:6px
 
 <script src="https://unpkg.com/quagga/dist/quagga.min.js"></script>
 <script>
-const SPOONACULAR_API_KEY = 'YOUR_API_KEY_HERE'; // Replace with your key
-const video = document.getElementById('video'), cameraError = document.getElementById('camera-error');
+const SPOONACULAR_API_KEY = 'YOUR_API_KEY_HERE'; // Replace if you want recipes
+const video = document.getElementById('video');
+const cameraError = document.getElementById('camera-error');
 
 const E = {
   productInfo: document.getElementById('product-info'),
@@ -164,22 +165,28 @@ function addToInventory(idx){
   saveData(); renderInventory(); refreshRecipes(); refreshDeals();
 }
 
-// Camera & Quagga
+// Camera & Quagga with automatic fallback
 function startCamera(){
   if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
     cameraError.textContent = "Camera not supported";
     return;
   }
-  navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}})
-    .then(stream=>{
-      video.srcObject = stream;
-      cameraError.textContent="";
-      initQuagga();
-    })
-    .catch(err=>{
-      console.error(err);
-      cameraError.textContent = "Camera access denied";
+
+  const tryCamera = (facingMode) => {
+    return navigator.mediaDevices.getUserMedia({video:{facingMode}})
+      .then(stream => {
+        video.srcObject = stream;
+        cameraError.textContent="";
+        initQuagga();
+        return true;
+      }).catch(err => false);
+  };
+
+  tryCamera("environment").then(ok=>{
+    if(!ok) tryCamera("user").then(ok2=>{
+      if(!ok2) cameraError.textContent="No camera found or access denied";
     });
+  });
 }
 
 function initQuagga(){
@@ -200,7 +207,7 @@ function initQuagga(){
   });
 }
 
-// Recipes (fallback search if API key not set)
+// Recipes fallback
 async function fetchRecipes(title){
   if(!SPOONACULAR_API_KEY) return [{title:title,url:`https://www.google.com/search?q=${encodeURIComponent(title+' recipe')}`,image:''}];
   const res = await fetch(`https://api.spoonacular.com/recipes/complexSearch?query=${encodeURIComponent(title)}&number=3&apiKey=${SPOONACULAR_API_KEY}`);
@@ -246,7 +253,7 @@ document.getElementById('importCSV').addEventListener('change',function(e){
   }; reader.readAsText(file);
 });
 
-// --- FINAL INIT ---
+// --- INIT ---
 startCamera();
 renderHistory();
 renderInventory();
