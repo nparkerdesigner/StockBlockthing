@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Smart Pantry - Prototype</title>
+<title>Smart Pantry - Enhanced</title>
 <style>
 body{font-family:system-ui,-apple-system,sans-serif;margin:0;padding:16px;background:#f2f4f7;color:#111;}
 .wrap{max-width:960px;margin:auto;}
@@ -28,10 +28,7 @@ button{background:#333;color:#fff;border:none;padding:6px 10px;border-radius:6px
 </head>
 <body>
 <div class="wrap">
-<header>
-  <h1>📦 Smart Pantry Prototype</h1>
-  <div class="small" id="current-time"></div>
-</header>
+<header><h1>📦 Smart Pantry</h1><div class="small" id="current-time"></div></header>
 
 <div class="card">
 <video id="video" playsinline autoplay></video>
@@ -75,6 +72,7 @@ button{background:#333;color:#fff;border:none;padding:6px 10px;border-radius:6px
 <script>
 const video=document.getElementById('video');
 const cameraError=document.getElementById('camera-error');
+
 const E={
   historyList:document.getElementById('history-list'),
   inventoryList:document.getElementById('inventory-list'),
@@ -94,10 +92,10 @@ let scanHistory=JSON.parse(localStorage.getItem('scanHistory')||'[]');
 let inventory=JSON.parse(localStorage.getItem('inventory')||'[]');
 let editIndex=null;
 
-// Save localStorage
-function saveData(){localStorage.setItem('scanHistory',JSON.stringify(scanHistory));localStorage.setItem('inventory',JSON.stringify(inventory));}
+// Save data
+function saveData(){localStorage.setItem('scanHistory',JSON.stringify(scanHistory)); localStorage.setItem('inventory',JSON.stringify(inventory));}
 
-// Current date/time
+// Current time display
 function updateTime(){document.getElementById('current-time').textContent='Current: '+new Date().toLocaleString();}
 setInterval(updateTime,1000); updateTime();
 
@@ -109,7 +107,7 @@ function colorForItem(item){
   return 'color-good';
 }
 
-// Render scan history
+// Render history
 function renderHistory(){
   E.historyList.innerHTML=scanHistory.length?scanHistory.map((h,i)=>`
     <div class="history-item">
@@ -121,7 +119,8 @@ function renderHistory(){
       </div>
     </div>`).join(''):'<div class="small">No scans yet</div>';
 }
-function removeHistory(idx){if(confirm(`Remove "${scanHistory[idx].title}" from scan history?`)){scanHistory.splice(idx,1);saveData();renderHistory();}}
+
+function removeHistory(idx){if(confirm(`Remove "${scanHistory[idx].title}" from history?`)){scanHistory.splice(idx,1);saveData();renderHistory();}}
 
 // Render inventory
 function renderInventory(){
@@ -133,9 +132,8 @@ function renderInventory(){
         <strong>${item.title}</strong>
         <div class="small">${item.brand||''}</div>
         <div class="small">Qty:${item.quantity} Exp:${item.expiry||'—'}</div>
-        <div class="small">Location: ${item.location||'—'} 
-          ${item.locationImage?`<img class="location-img" src="${item.locationImage}">`:''}
-        </div>
+        <div class="small">Location: ${item.location||'—'} ${item.locationImage?`<img class="location-img" src="${item.locationImage}">`:''}</div>
+        <div class="small">💰 <a href="https://flipp.com/search?q=${encodeURIComponent(item.title)}" target="_blank">View deals / Buy</a></div>
       </div>
       <div>
         <button onclick="openModal(${i})">Edit</button>
@@ -145,17 +143,18 @@ function renderInventory(){
   }).join(''):'<div class="small">Inventory empty</div>';
 }
 
-// Add / remove inventory
+// Add/remove inventory
 function addToInventory(idx){
   const hist=scanHistory[idx];
-  const found=inventory.find(i=>i.barcode===hist.barcode);
-  if(found){found.quantity=(found.quantity||0)+1;} 
-  else {inventory.unshift({...hist,quantity:1,expiry:randomExpiry(),image:hist.image||'https://via.placeholder.com/56',location:'Fridge',locationImage:'https://via.placeholder.com/40'});}
+  let found=inventory.find(i=>i.barcode===hist.barcode);
+  if(found){found.quantity++;} 
+  else {inventory.unshift({...hist,quantity:1,expiry:randomExpiry(),location:'Fridge',locationImage:'https://via.placeholder.com/40',image:hist.image||'https://via.placeholder.com/56'});}
   saveData(); renderInventory(); notifyIfExpiring(inventory.find(i=>i.barcode===hist.barcode));
 }
-function removeItem(idx){if(confirm(`Remove "${inventory[idx].title}" from inventory?`)){inventory.splice(idx,1);saveData();renderInventory();}}
 
-// Random expiry 1-14 days
+function removeItem(idx){if(confirm(`Remove "${inventory[idx].title}"?`)){inventory.splice(idx,1);saveData();renderInventory();}}
+
+// Random expiry 1–14 days
 function randomExpiry(){const d=new Date(); d.setDate(d.getDate()+Math.floor(Math.random()*14)+1); return d.toISOString().split('T')[0];}
 
 // Notifications
@@ -165,7 +164,7 @@ function notifyIfExpiring(item){
 }
 if(Notification.permission!=="granted") Notification.requestPermission();
 
-// Modal edit
+// Modal
 function openModal(idx){
   editIndex=idx; const item=inventory[idx];
   E.modalTitle.value=item.title;
@@ -188,33 +187,44 @@ E.modalSave.onclick=()=>{
   item.location=E.modalLocation.value;
   item.locationImage=E.modalLocationImage.value||'https://via.placeholder.com/40';
   saveData(); E.modal.style.display='none'; renderInventory();
-};
-
-// Quagga scanner (unchanged from working version)
-function startCamera(){
-  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){cameraError.textContent="Camera not supported"; return;}
-  navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}})
-    .then(stream=>{video.srcObject=stream; initQuagga();})
-    .catch(err=>{console.error(err);cameraError.textContent="Camera access denied";});
 }
+
+// Quagga Scanner (keep exactly as working)
 function initQuagga(){
-  Quagga.init({inputStream:{name:"Live",type:"LiveStream",target:video,constraints:{facingMode:"environment"}},decoder:{readers:["ean_reader","upc_reader"]}},function(err){if(err){console.error(err);cameraError.textContent="Scanner failed";return;}Quagga.start();});
-  let lastDetected=null;
-  Quagga.onDetected(result=>{
-    const code=result?.codeResult?.code; if(!code) return;
-    if(code===lastDetected) return; lastDetected=code; setTimeout(()=>lastDetected=null,1500);
-    const exists=scanHistory.find(h=>h.barcode===code);
-    if(!exists){
-      const title="Product "+code;
-      const brand="Brand "+Math.floor(Math.random()*10+1);
-      const image="https://via.placeholder.com/56";
-      scanHistory.unshift({barcode:code,title,brand,image});
-      saveData(); renderHistory();
+  Quagga.init({
+    inputStream:{name:"Live",type:"LiveStream",target:video,constraints:{facingMode:"environment"}},
+    decoder:{readers:["ean_reader","upc_reader"]}
+  },function(err){if(err){console.error(err);cameraError.textContent="Scanner init failed";return;}Quagga.start();});
+  
+  let last=null;
+  Quagga.onDetected(async r=>{
+    const code=r?.codeResult?.code; if(!code || code===last) return;
+    last=code; setTimeout(()=>last=null,1500);
+    if(!scanHistory.find(h=>h.barcode===code)){
+      let product={barcode:code,title:'Product '+code,brand:'',image:''};
+      try{
+        const res=await fetch(`https://world.openfoodfacts.org/api/v0/product/${code}.json`);
+        const data=await res.json();
+        if(data.status===1){
+          product.title=data.product.product_name||product.title;
+          product.brand=data.product.brands||'';
+          product.image=data.product.image_front_small_url||'';
+        }
+      }catch(err){console.warn('Fetch failed',err);}
+      scanHistory.unshift(product); saveData(); renderHistory();
     }
   });
 }
 
-// Initialize
+// Camera
+function startCamera(){
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){cameraError.textContent="Camera not supported"; return;}
+  navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}})
+    .then(stream=>{video.srcObject=stream; video.onloadedmetadata=()=>{video.play();cameraError.textContent=""; initQuagga();};})
+    .catch(err=>{console.error(err); cameraError.textContent="Camera access denied";});
+}
+
+// INIT
 startCamera(); renderHistory(); renderInventory();
 </script>
 </body>
