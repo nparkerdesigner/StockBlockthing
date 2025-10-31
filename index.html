@@ -3,20 +3,19 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Smart Pantry Prototype - Easy UX</title>
+<title>Smart Pantry Prototype</title>
 <style>
 body{font-family:system-ui,-apple-system,sans-serif;margin:0;padding:16px;background:#f2f4f7;color:#111;}
 .wrap{max-width:960px;margin:auto;}
 header{display:flex;align-items:center;gap:12px;flex-wrap:wrap;}
-header h1{margin:0;font-size:20px;}
+header h1{margin:0;font-size:22px;}
 .card{background:#fafafa;border-radius:10px;padding:12px;box-shadow:0 1px 4px rgba(0,0,0,0.06);margin-bottom:12px;}
 video{width:100%;border-radius:8px;background:#000;}
-button{background:#333;color:#fff;border:none;padding:8px 12px;border-radius:6px;cursor:pointer;font-size:14px;}
+button{background:#333;color:#fff;border:none;padding:6px 10px;border-radius:6px;cursor:pointer;}
 button.buy{background:green;}
-button.add{background:#007bff;margin-top:8px;width:100%;font-size:16px;}
 .small{font-size:13px;color:#666;}
-.history-item,.inv-item{display:flex;gap:10px;align-items:center;padding:8px;border-radius:8px;margin-bottom:8px;background:white;}
-.history-item img,.inv-item img{width:56px;height:56px;object-fit:cover;border-radius:6px;}
+.inv-item{display:flex;gap:10px;align-items:center;padding:8px;border-radius:8px;margin-bottom:8px;background:white;}
+.inv-item img{width:56px;height:56px;object-fit:cover;border-radius:6px;}
 .color-good{background:#d4f7d4;}
 .color-warn{background:#fff3cd;}
 .color-bad{background:#ffd6d6;}
@@ -25,6 +24,8 @@ button.add{background:#007bff;margin-top:8px;width:100%;font-size:16px;}
 .modal-content label{display:block;margin-top:8px;}
 .modal-close{position:absolute;top:8px;right:8px;cursor:pointer;font-weight:bold;}
 #camera-error{color:red;text-align:center;padding:12px;}
+#current-product{display:flex;gap:10px;align-items:center;margin-top:10px;}
+#current-product img{width:60px;height:60px;object-fit:cover;border-radius:6px;}
 </style>
 </head>
 <body>
@@ -35,15 +36,9 @@ button.add{background:#007bff;margin-top:8px;width:100%;font-size:16px;}
 </header>
 
 <div class="card">
-  <div class="small center">Scan a barcode or press Add Item</div>
   <video id="video" playsinline autoplay></video>
   <div id="camera-error" class="small">Initializing camera...</div>
-  <button class="add" id="add-item-btn">➕ Add Item</button>
-</div>
-
-<div class="card">
-<h3>Scan History</h3>
-<div id="history-list"></div>
+  <div id="current-product"></div>
 </div>
 
 <div class="card">
@@ -55,77 +50,61 @@ button.add{background:#007bff;margin-top:8px;width:100%;font-size:16px;}
 <div class="modal" id="modal">
 <div class="modal-content">
 <span class="modal-close" id="modal-close">&times;</span>
-<h3>Edit Item</h3>
+<h3>Edit / Add Item</h3>
 <label>Title: <input type="text" id="modal-title"></label>
 <label>Brand: <input type="text" id="modal-brand"></label>
-<label>Description: <textarea id="modal-desc" rows="2"></textarea></label>
+<label>Description: <input type="text" id="modal-desc"></label>
 <label>Quantity: <input type="number" id="modal-qty"></label>
 <label>Expiry: <input type="date" id="modal-expiry"></label>
 <label>Image URL: <input type="text" id="modal-image"></label>
-<button id="modal-save">Save</button>
-<button class="buy" id="modal-buy">Buy Now</button>
+<div style="margin-top:10px;">
+  <button id="modal-add">Add to Inventory</button>
+  <button id="modal-buy" class="buy">Buy Now</button>
+</div>
 </div>
 </div>
 
 <script src="https://unpkg.com/quagga/dist/quagga.min.js"></script>
 <script>
-// Elements
 const video=document.getElementById('video');
 const cameraError=document.getElementById('camera-error');
 const E={
-  historyList:document.getElementById('history-list'),
   inventoryList:document.getElementById('inventory-list'),
   modal:document.getElementById('modal'),
   modalClose:document.getElementById('modal-close'),
-  modalSave:document.getElementById('modal-save'),
+  modalAdd:document.getElementById('modal-add'),
+  modalBuy:document.getElementById('modal-buy'),
   modalTitle:document.getElementById('modal-title'),
   modalBrand:document.getElementById('modal-brand'),
   modalDesc:document.getElementById('modal-desc'),
   modalQty:document.getElementById('modal-qty'),
   modalExpiry:document.getElementById('modal-expiry'),
   modalImage:document.getElementById('modal-image'),
-  modalBuy:document.getElementById('modal-buy'),
-  addBtn:document.getElementById('add-item-btn')
+  currentProductDiv:document.getElementById('current-product')
 };
 
-// Data
-let scanHistory=JSON.parse(localStorage.getItem('scanHistory')||'[]');
 let inventory=JSON.parse(localStorage.getItem('inventory')||'[]');
-let editIndex=null;
+let currentProduct=null;
+let scanLocked=false;
 
+// Example products for demo
 const exampleProducts=[
-  {title:"Cheerios",brand:"General Mills",desc:"Delicious oat cereal for breakfast",image:"https://upload.wikimedia.org/wikipedia/commons/thumb/8/87/Cheerios.png/100px-Cheerios.png"},
-  {title:"Coca-Cola",brand:"Coca-Cola",desc:"Classic soda beverage",image:"https://upload.wikimedia.org/wikipedia/commons/thumb/1/19/Coca-Cola_bottle.png/100px-Coca-Cola_bottle.png"},
-  {title:"Oreo Cookies",brand:"Nabisco",desc:"Chocolate sandwich cookies",image:"https://upload.wikimedia.org/wikipedia/commons/thumb/4/4b/Oreo_cookies.png/100px-Oreo_cookies.png"},
-  {title:"Peanut Butter",brand:"Jif",desc:"Creamy peanut butter spread",image:"https://upload.wikimedia.org/wikipedia/commons/thumb/b/bd/Jif_Peanut_Butter.png/100px-Jif_Peanut_Butter.png"},
-  {title:"Nutella",brand:"Ferrero",desc:"Chocolate-hazelnut spread",image:"https://upload.wikimedia.org/wikipedia/commons/thumb/e/e1/Nutella_jar.png/100px-Nutella_jar.png"},
-  {title:"Kellogg's Corn Flakes",brand:"Kellogg's",desc:"Classic corn flakes cereal",image:"https://upload.wikimedia.org/wikipedia/commons/thumb/4/4d/Cornflakes_box.png/100px-Cornflakes_box.png"},
-  {title:"Lipton Tea",brand:"Lipton",desc:"Refreshing tea bags",image:"https://upload.wikimedia.org/wikipedia/commons/thumb/9/99/Lipton_Tea.png/100px-Lipton_Tea.png"},
-  {title:"Heinz Ketchup",brand:"Heinz",desc:"Tomato ketchup condiment",image:"https://upload.wikimedia.org/wikipedia/commons/thumb/4/4c/Heinz_Ketchup.png/100px-Heinz_Ketchup.png"},
-  {title:"Campbell Soup",brand:"Campbell's",desc:"Classic tomato soup",image:"https://upload.wikimedia.org/wikipedia/commons/thumb/3/36/Campbells_Tomato_Soup.png/100px-Campbells_Tomato_Soup.png"},
-  {title:"Bananas",brand:"Chiquita",desc:"Fresh bananas",image:"https://upload.wikimedia.org/wikipedia/commons/thumb/8/8a/Banana.png/100px-Banana.png"},
-  {title:"Apples",brand:"Gala",desc:"Juicy apples",image:"https://upload.wikimedia.org/wikipedia/commons/thumb/1/15/Gala_Apple.png/100px-Gala_Apple.png"},
-  {title:"Bread",brand:"Wonder",desc:"Soft white bread",image:"https://upload.wikimedia.org/wikipedia/commons/thumb/3/33/Wonder_Bread.png/100px-Wonder_Bread.png"},
-  {title:"Milk",brand:"Dairyland",desc:"Fresh milk",image:"https://upload.wikimedia.org/wikipedia/commons/thumb/2/2e/Dairyland_Milk.png/100px-Dairyland_Milk.png"},
-  {title:"Eggs",brand:"Large",desc:"Fresh chicken eggs",image:"https://upload.wikimedia.org/wikipedia/commons/thumb/1/1e/Eggs_carton.png/100px-Eggs_carton.png"},
-  {title:"Cheddar Cheese",brand:"Cracker Barrel",desc:"Sharp cheddar cheese",image:"https://upload.wikimedia.org/wikipedia/commons/thumb/f/f0/Cracker_Barrel_Cheddar.png/100px-Cracker_Barrel_Cheddar.png"},
-  {title:"Yogurt",brand:"Yoplait",desc:"Strawberry yogurt",image:"https://upload.wikimedia.org/wikipedia/commons/thumb/2/2a/Yoplait_Yogurt.png/100px-Yoplait_Yogurt.png"},
-  {title:"Frozen Pizza",brand:"DiGiorno",desc:"Cheese frozen pizza",image:"https://upload.wikimedia.org/wikipedia/commons/thumb/3/3b/Digiorno_Pizza.png/100px-Digiorno_Pizza.png"},
-  {title:"Cereal Bars",brand:"Nature Valley",desc:"Granola cereal bars",image:"https://upload.wikimedia.org/wikipedia/commons/thumb/8/82/Nature_Valley_Bars.png/100px-Nature_Valley_Bars.png"},
-  {title:"Orange Juice",brand:"Tropicana",desc:"Fresh orange juice",image:"https://upload.wikimedia.org/wikipedia/commons/thumb/4/44/Tropicana_OJ.png/100px-Tropicana_OJ.png"},
-  {title:"Butter",brand:"President",desc:"Creamy butter",image:"https://upload.wikimedia.org/wikipedia/commons/thumb/0/0b/President_Butter.png/100px-President_Butter.png"},
-  {title:"Strawberries",brand:"Fresh",desc:"Sweet strawberries",image:"https://upload.wikimedia.org/wikipedia/commons/thumb/1/18/Strawberries.png/100px-Strawberries.png"},
-  {title:"Blueberries",brand:"Fresh",desc:"Fresh blueberries",image:"https://upload.wikimedia.org/wikipedia/commons/thumb/2/2d/Blueberries.png/100px-Blueberries.png"},
-  {title:"Tomato Sauce",brand:"Hunt's",desc:"Classic tomato sauce",image:"https://upload.wikimedia.org/wikipedia/commons/thumb/5/56/Hunts_Tomato_Sauce.png/100px-Hunts_Tomato_Sauce.png"},
-  {title:"Spaghetti",brand:"Barilla",desc:"Dry spaghetti pasta",image:"https://upload.wikimedia.org/wikipedia/commons/thumb/f/f0/Barilla_Spaghetti.png/100px-Barilla_Spaghetti.png"},
-  {title:"Mayonnaise",brand:"Hellmann's",desc:"Creamy mayo",image:"https://upload.wikimedia.org/wikipedia/commons/thumb/6/60/Hellmanns_Mayo.png/100px-Hellmanns_Mayo.png"}
+  {title:"Cheerios",brand:"General Mills",desc:"Delicious tasty cereal",image:"https://images.unsplash.com/photo-1590080875632-d5b601b48c0b?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&h=60&w=60"},
+  {title:"Coca-Cola",brand:"Coca-Cola",desc:"Refreshing soda drink",image:"https://images.unsplash.com/photo-1587732380910-16b9c7b9c650?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&h=60&w=60"},
+  {title:"Eggs",brand:"Organic Farms",desc:"Fresh organic eggs",image:"https://images.unsplash.com/photo-1585238342020-7d4ab06a8c8e?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&h=60&w=60"},
+  {title:"Milk",brand:"DairyLand",desc:"Full cream milk",image:"https://images.unsplash.com/photo-1585238341877-1b3d6c8c8b26?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&h=60&w=60"},
+  {title:"Bread",brand:"Wonder",desc:"Soft white bread",image:"https://images.unsplash.com/photo-1576418887370-1a23b1c611d1?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&h=60&w=60"},
+  {title:"Peanut Butter",brand:"Jif",desc:"Creamy peanut butter",image:"https://images.unsplash.com/photo-1590080875554-8f3d991b63d0?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&h=60&w=60"}
 ];
 
-// Functions
-function saveData(){localStorage.setItem('scanHistory',JSON.stringify(scanHistory));localStorage.setItem('inventory',JSON.stringify(inventory));}
+// Save inventory
+function saveData(){localStorage.setItem('inventory',JSON.stringify(inventory));}
+
+// Show current time
 function updateTime(){document.getElementById('current-time').textContent='Current: '+new Date().toLocaleString();}
 setInterval(updateTime,1000); updateTime();
 
+// Color coding
 function colorForItem(item){
   const days=item.expiry?Math.round((new Date(item.expiry)-new Date())/(24*60*60*1000)):null;
   if((days!==null && days<0) || item.quantity<=0) return 'color-bad';
@@ -133,95 +112,136 @@ function colorForItem(item){
   return 'color-good';
 }
 
-function renderHistory(){
-  E.historyList.innerHTML=scanHistory.length?scanHistory.map((h,i)=>`
-    <div class="history-item">
-      <img src="${h.image}" alt="">
-      <div style="flex:1"><strong>${h.title}</strong><div class="small">${h.brand}</div><div class="small">${h.desc}</div><div class="small">UPC:${h.barcode}</div></div>
-      <div><button onclick="addToInventory(${i})">Add</button></div>
-    </div>`).join(''):'<div class="small">No scans yet</div>';
-}
-
+// Render inventory
 function renderInventory(){
   E.inventoryList.innerHTML=inventory.length?inventory.map((item,i)=>{
     const cls=colorForItem(item);
     return `<div class="inv-item ${cls}">
-      <img src="${item.image}" alt="">
-      <div style="flex:1"><strong>${item.title}</strong><div class="small">${item.brand}</div><div class="small">${item.desc}</div><div class="small">Qty:${item.quantity} Exp:${item.expiry||'—'}</div></div>
+      ${item.image?`<img src="${item.image}">`:`<div style="width:56px;height:56px;background:#eee;border-radius:6px;display:flex;align-items:center;justify-content:center">?</div>`}
+      <div style="flex:1">
+        <strong>${item.title}</strong><div class="small">${item.brand||''}</div><div class="small">${item.desc||''}</div>
+        <div class="small">Qty:${item.quantity} Exp:${item.expiry||'—'}</div>
+      </div>
       <div>
-        <button onclick="openModal(${i})">Edit</button>
+        <button onclick="editItem(${i})">Edit</button>
         <button onclick="removeItem(${i})" style="background:red;margin-left:4px;">Remove</button>
       </div>
     </div>`;
   }).join(''):'<div class="small">Inventory empty</div>';
 }
 
-function addToInventory(idx){
-  let product = idx!==undefined?scanHistory[idx]:exampleProducts[Math.floor(Math.random()*exampleProducts.length)];
-  const found=inventory.find(i=>i.barcode===product.barcode);
-  if(found){found.quantity=(found.quantity||0)+1;}
-  else {
-    if(!product.barcode) product.barcode=Math.floor(Math.random()*1000000000000).toString();
-    product.quantity=1;
-    product.expiry=randomExpiry();
-    inventory.unshift({...product});
-  }
-  saveData();
-  renderInventory();
-  openModal(inventory.findIndex(i=>i.barcode===product.barcode));
-  notifyIfExpiring(product);
+// Render current scanned product
+function renderCurrentProduct(){
+  if(currentProduct){
+    E.currentProductDiv.innerHTML=`<img src="${currentProduct.image}"><div>
+      <strong>${currentProduct.title}</strong><div class="small">${currentProduct.brand}</div>
+      <div class="small">${currentProduct.desc}</div>
+      <button onclick="openModalForCurrent()">Add / Edit</button>
+    </div>`;
+  } else E.currentProductDiv.innerHTML='';
 }
 
-function removeItem(idx){if(confirm(`Remove "${inventory[idx].title}" from inventory?`)){inventory.splice(idx,1); saveData(); renderInventory();}}
-function openModal(idx){
-  editIndex=idx;
-  const item=inventory[idx];
-  E.modalTitle.value=item.title;
-  E.modalBrand.value=item.brand||'';
-  E.modalDesc.value=item.desc||'';
-  E.modalQty.value=item.quantity||1;
-  E.modalExpiry.value=item.expiry||'';
-  E.modalImage.value=item.image||'';
+// Add / remove / edit
+function editItem(idx){
+  currentProduct = inventory[idx];
+  openModalForCurrent();
+}
+
+function removeItem(idx){
+  if(confirm(`Remove "${inventory[idx].title}" from inventory?`)){
+    inventory.splice(idx,1);
+    saveData();
+    renderInventory();
+  }
+}
+
+// Modal
+function openModalForCurrent(){
+  if(!currentProduct) return;
+  E.modalTitle.value=currentProduct.title;
+  E.modalBrand.value=currentProduct.brand||'';
+  E.modalDesc.value=currentProduct.desc||'';
+  E.modalQty.value=currentProduct.quantity||1;
+  E.modalExpiry.value=currentProduct.expiry||'';
+  E.modalImage.value=currentProduct.image||'';
   E.modal.style.display='flex';
 }
 
-E.modalClose.onclick=()=>E.modal.style.display='none';
-E.modalSave.onclick=()=>{
-  const item=inventory[editIndex];
-  item.title=E.modalTitle.value;
-  item.brand=E.modalBrand.value;
-  item.desc=E.modalDesc.value;
-  item.quantity=parseInt(E.modalQty.value)||1;
-  item.expiry=E.modalExpiry.value||null;
-  item.image=E.modalImage.value||'';
-  saveData(); E.modal.style.display='none'; renderInventory(); notifyIfExpiring(item);
+E.modalClose.onclick=()=>{E.modal.style.display='none'; currentProduct=null; scanLocked=false;};
+
+E.modalAdd.onclick=()=>{
+  if(!currentProduct) return;
+  currentProduct.title=E.modalTitle.value;
+  currentProduct.brand=E.modalBrand.value;
+  currentProduct.desc=E.modalDesc.value;
+  currentProduct.quantity=parseInt(E.modalQty.value)||1;
+  currentProduct.expiry=E.modalExpiry.value||randomExpiry();
+  currentProduct.image=E.modalImage.value||'https://via.placeholder.com/56';
+  inventory.unshift(currentProduct);
+  saveData();
+  renderInventory();
+  E.modal.style.display='none';
+  currentProduct=null;
+  renderCurrentProduct();
+  scanLocked=false;
+  notifyIfExpiring(inventory[0]);
 };
-E.modalBuy.onclick=()=>{if(editIndex!==null){const item=inventory[editIndex]; window.open(`https://flipp.com/search?q=${encodeURIComponent(item.title)}`,'_blank');}};
 
-function randomExpiry(){const d=new Date(); d.setDate(d.getDate()+Math.floor(Math.random()*14)+1); return d.toISOString().split('T')[0];}
+E.modalBuy.onclick=()=>{
+  if(currentProduct) window.open(`https://flipp.com/search?q=${encodeURIComponent(currentProduct.title)}`,'_blank');
+};
 
-function notifyIfExpiring(item){if(Notification.permission!=='granted')Notification.requestPermission(); const days=item.expiry?Math.round((new Date(item.expiry)-new Date())/(24*60*60*1000)):null; if(days!==null&&days<=3&&Notification.permission==='granted'){new Notification('Expiring Soon!',{body:`${item.title} expires in ${days} day(s)`});}}
+// Random expiry (1-14 days)
+function randomExpiry(){
+  const d=new Date();
+  d.setDate(d.getDate()+Math.floor(Math.random()*14)+1);
+  return d.toISOString().split('T')[0];
+}
 
+// Notification for expiring items
+function notifyIfExpiring(item){
+  if(Notification.permission!=='granted') Notification.requestPermission();
+  const days=item.expiry?Math.round((new Date(item.expiry)-new Date())/(24*60*60*1000)):null;
+  if(days!==null && days<=3 && Notification.permission==='granted'){
+    new Notification('Expiring Soon!',{body:`${item.title} expires in ${days} day(s)`});
+  }
+}
+
+// Quagga scanner
 function initQuagga(){
-  Quagga.init({inputStream:{name:"Live",type:"LiveStream",target:video,constraints:{facingMode:"environment"}},decoder:{readers:["ean_reader","upc_reader","upc_e_reader"]}},function(err){if(err){console.error(err);cameraError.textContent="Scanner init failed";return;} Quagga.start();});
-  let last=null;
+  Quagga.init({
+    inputStream:{name:"Live",type:"LiveStream",target:video,constraints:{facingMode:"environment"}},
+    decoder:{readers:["ean_reader","upc_reader","upc_e_reader"]}
+  }, function(err){
+    if(err){console.error(err); cameraError.textContent="Scanner init failed"; return;}
+    Quagga.start();
+  });
+
   Quagga.onDetected(r=>{
+    if(scanLocked) return;
     const code=r?.codeResult?.code;
-    if(!code||code===last) return;
-    last=code; setTimeout(()=>last=null,1500);
-    addToInventory();
+    if(!code) return;
+    scanLocked=true;
+
+    // Pick random example product for demo
+    currentProduct = {...exampleProducts[Math.floor(Math.random()*exampleProducts.length)], barcode: code, expiry: randomExpiry()};
+    renderCurrentProduct();
+    openModalForCurrent();
   });
 }
 
+// Camera
 function startCamera(){
-  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){cameraError.textContent="Camera not supported"; return;}
-  navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}}).then(stream=>{video.srcObject=stream; video.onloadedmetadata=()=>{video.play(); cameraError.textContent=""; initQuagga();};}).catch(err=>{console.error(err); cameraError.textContent="Camera access denied";});
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    cameraError.textContent="Camera not supported"; return;
+  }
+  navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}})
+    .then(stream=>{video.srcObject=stream; video.onloadedmetadata=()=>{video.play(); cameraError.textContent=""; initQuagga();};})
+    .catch(err=>{console.error(err); cameraError.textContent="Camera access denied";});
 }
 
-E.addBtn.onclick=()=>addToInventory();
-
+// INIT
 startCamera();
-renderHistory();
 renderInventory();
 </script>
 </body>
