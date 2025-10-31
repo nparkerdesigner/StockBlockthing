@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Smart Pantry - Full Features</title>
+<title>Smart Pantry - Working Camera</title>
 <style>
 body{font-family:system-ui,-apple-system,sans-serif;margin:0;padding:16px;background:#f2f4f7;color:#111;}
 .wrap{max-width:960px;margin:auto;}
@@ -27,7 +27,7 @@ button{background:#333;color:#fff;border:none;padding:8px 10px;border-radius:6px
 </head>
 <body>
 <div class="wrap">
-<header><h1>📦 Smart Pantry</h1><div class="small">Scan, track expiry, recipes & deals</div></header>
+<header><h1>📦 Smart Pantry</h1><div class="small">Scan and track your items</div></header>
 
 <div class="card">
 <video id="video" playsinline autoplay></video>
@@ -43,19 +43,7 @@ button{background:#333;color:#fff;border:none;padding:8px 10px;border-radius:6px
 
 <div class="card">
 <h3>Inventory</h3>
-<button onclick="exportCSV()">Export CSV</button>
-<input type="file" id="importCSV" accept=".csv">
 <div id="inventory-list"></div>
-</div>
-
-<div class="card">
-<h3>Recipes for Soon-to-Expire Items</h3>
-<div id="recipes" class="small">No suggestions yet.</div>
-</div>
-
-<div class="card">
-<h3>Deals & Flyers</h3>
-<div id="deals" class="small">Click an item to search deals.</div>
 </div>
 </div>
 
@@ -74,15 +62,12 @@ button{background:#333;color:#fff;border:none;padding:8px 10px;border-radius:6px
 
 <script src="https://unpkg.com/quagga/dist/quagga.min.js"></script>
 <script>
-const SPOONACULAR_API_KEY = ''; // optional
 const video=document.getElementById('video');
 const cameraError=document.getElementById('camera-error');
 
 const E={
   historyList:document.getElementById('history-list'),
   inventoryList:document.getElementById('inventory-list'),
-  recipes:document.getElementById('recipes'),
-  deals:document.getElementById('deals'),
   modal:document.getElementById('modal'),
   modalClose:document.getElementById('modal-close'),
   modalSave:document.getElementById('modal-save'),
@@ -120,10 +105,9 @@ function renderHistory(){
 function renderInventory(){
   E.inventoryList.innerHTML=inventory.length?inventory.map((item,i)=>{
     const cls=colorForItem(item);
-    const days=item.expiry?Math.round((new Date(item.expiry)-new Date())/(24*60*60*1000)):'—';
     return `<div class="inv-item ${cls}">
       ${item.image?`<img src="${item.image}">`:`<div style="width:56px;height:56px;background:#eee;border-radius:6px;display:flex;align-items:center;justify-content:center">?</div>`}
-      <div style="flex:1"><strong>${item.title}</strong><div class="small">${item.brand||''}</div><div class="small">Qty:${item.quantity} Exp:${item.expiry||'—'} (${days}d)</div></div>
+      <div style="flex:1"><strong>${item.title}</strong><div class="small">${item.brand||''}</div><div class="small">Qty:${item.quantity} Exp:${item.expiry||'—'}</div></div>
       <div><button onclick="openModal(${i})">Edit</button></div>
     </div>`;
   }).join(''):'<div class="small">Inventory empty</div>';
@@ -133,7 +117,7 @@ function addToInventory(idx){
   const hist=scanHistory[idx];
   const found=inventory.find(i=>i.barcode===hist.barcode);
   if(found){found.quantity=(found.quantity||0)+1;} else {inventory.unshift({...hist,quantity:1,expiry:null,image:''});}
-  saveData(); renderInventory(); refreshRecipes(); refreshDeals();
+  saveData(); renderInventory();
 }
 
 // Modal
@@ -156,85 +140,60 @@ E.modalSave.onclick=()=>{
   item.expiry=E.modalExpiry.value||null;
   item.image=E.modalImage.value||'';
   saveData(); E.modal.style.display='none';
-  renderInventory(); refreshRecipes(); refreshDeals();
+  renderInventory();
 }
 
 // Quagga Scanner
 function initQuagga(){
-  Quagga.init({inputStream:{name:"Live",type:"LiveStream",target:video,constraints:{facingMode:"environment"}},decoder:{readers:["ean_reader","upc_reader"]}},function(err){if(err){console.error(err);cameraError.textContent="Scanner init failed";return;}Quagga.start();});
+  Quagga.init({
+    inputStream:{
+      name:"Live",
+      type:"LiveStream",
+      target:document.querySelector('video'),
+      constraints:{facingMode:"environment"}
+    },
+    decoder:{readers:["ean_reader","upc_reader"]}
+  },function(err){
+    if(err){console.error(err);cameraError.textContent="Scanner init failed";return;}
+    Quagga.start();
+  });
+
   let last=null;
   Quagga.onDetected(r=>{
-    const code=r?.codeResult?.code;if(!code||code===last)return;
-    last=code;setTimeout(()=>last=null,1500);
-    if(!scanHistory.find(h=>h.barcode===code)){scanHistory.unshift({barcode:code,title:'Product '+code});saveData();renderHistory();}
+    const code=r?.codeResult?.code;
+    if(!code || code===last) return;
+    last=code;
+    setTimeout(()=>last=null,1500);
+    if(!scanHistory.find(h=>h.barcode===code)){
+      scanHistory.unshift({barcode:code,title:'Product '+code});
+      saveData();
+      renderHistory();
+    }
   });
 }
 
 // Camera
 function startCamera(){
-  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){cameraError.textContent="Camera not supported";return;}
-  const tryCam=facingMode=>navigator.mediaDevices.getUserMedia({video:{facingMode}}).then(stream=>{video.srcObject=stream;cameraError.textContent="";initQuagga();return true;}).catch(()=>false);
-  tryCam("environment").then(ok=>{if(!ok)tryCam("user").then(ok2=>{if(!ok2)cameraError.textContent="No camera found or access denied";});});
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){cameraError.textContent="Camera not supported"; return;}
+  navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}})
+  .then(stream=>{
+    video.srcObject=stream;
+    video.onloadedmetadata = ()=>{
+      video.play();
+      cameraError.textContent="";
+      initQuagga();
+    };
+  })
+  .catch(err=>{
+    console.error(err);
+    cameraError.textContent="Camera access denied";
+  });
 }
-
-// Recipes
-async function fetchRecipes(title){
-  if(!SPOONACULAR_API_KEY)return[{title:title,url:`https://www.google.com/search?q=${encodeURIComponent(title+' recipe')}`,image:''}];
-  const res=await fetch(`https://api.spoonacular.com/recipes/complexSearch?query=${encodeURIComponent(title)}&number=3&apiKey=${SPOONACULAR_API_KEY}`);
-  const data=await res.json();
-  return data.results.map(r=>({title:r.title,url:r.sourceUrl,image:r.image}));
-}
-async function refreshRecipes(){
-  let html='';
-  for(const i of inventory){
-    if(i.expiry){
-      const days=Math.round((new Date(i.expiry)-new Date())/(24*60*60*1000));
-      if(days<=5){
-        const items=await fetchRecipes(i.title);
-        html+=items.map(r=>`<div>🍳 <a href="${r.url}" target="_blank">${r.title}</a> ${r.image?`<img src="${r.image}" width="60">`:''}</div>`).join('');
-      }
-    }
-  }
-  E.recipes.innerHTML=html||'No soon-to-expire items';
-}
-
-// Deals
-function refreshDeals(){
-  E.deals.innerHTML=inventory.map(i=>`<div>💰 <a href="https://flipp.com/search?q=${encodeURIComponent(i.title)}" target="_blank">${i.title} deals</a></div>`).join('')||'No items';
-}
-
-// Notifications
-function notifyLowStock(item){if(Notification.permission==="granted"){new Notification('Low Stock',{body:`${item.title} is low! Qty:${item.quantity}`});}}
-if(Notification.permission!=="granted")Notification.requestPermission();
-
-// CSV Export/Import
-function exportCSV(){
-  const csv='Title,Brand,Quantity,Expiry,Image,Barcode\n'+inventory.map(i=>[i.title,i.brand,i.quantity,i.expiry,i.image,i.barcode||''].map(v=>`"${v}"`).join(',')).join('\n');
-  const a=document.createElement('a'); a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv); a.download='inventory.csv'; a.click();
-}
-document.getElementById('importCSV').addEventListener('change',e=>{
-  const file=e.target.files[0];if(!file)return;
-  const reader=new FileReader();
-  reader.onload=function(ev){
-    const lines=ev.target.result.split(/\r?\n/);
-    const inv=[];
-    lines.slice(1).forEach(l=>{if(l.trim()){const [title,brand,quantity,expiry,image,barcode]=l.split(',');inv.push({title:title.replace(/"/g,''),brand:brand.replace(/"/g,''),quantity:parseInt(quantity)||1,expiry:expiry.replace(/"/g,''),image:image.replace(/"/g,''),barcode:barcode.replace(/"/g,'')});}});
-    inventory=inv;saveData();renderInventory();refreshRecipes();refreshDeals();
-  };reader.readAsText(file);
-});
 
 // --- INIT ---
 startCamera();
 renderHistory();
 renderInventory();
-refreshRecipes();
-refreshDeals();
-setInterval(()=>{
-  inventory.forEach(i=>{if(i.quantity<=2)notifyLowStock(i);});
-  renderInventory();
-  refreshRecipes();
-  refreshDeals();
-},5000);
 </script>
 </body>
 </html>
