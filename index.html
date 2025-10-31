@@ -145,7 +145,7 @@ E.modalSave.onclick=()=>{
   renderInventory();
 }
 
-// Quagga Scanner with OpenFoodFacts
+// Quagga Scanner with OpenFoodFacts fallback
 function initQuagga(){
   Quagga.init({
     inputStream:{
@@ -154,7 +154,7 @@ function initQuagga(){
       target:document.querySelector('video'),
       constraints:{facingMode:"environment"}
     },
-    decoder:{readers:["ean_reader","upc_reader"]}
+    decoder:{readers:["ean_reader","upc_reader","upc_e_reader"]}
   },function(err){
     if(err){console.error(err);cameraError.textContent="Scanner init failed";return;}
     Quagga.start();
@@ -167,6 +167,11 @@ function initQuagga(){
     last=code; setTimeout(()=>last=null,1500);
 
     if(!scanHistory.find(h=>h.barcode===code)){
+      // placeholder while fetching
+      scanHistory.unshift({barcode:code,title:'Loading...',brand:'',image:''});
+      saveData();
+      renderHistory();
+
       let product={barcode:code,title:'Product '+code,brand:'',image:''};
       try{
         const res = await fetch(`https://world.openfoodfacts.org/api/v0/product/${code}.json`);
@@ -177,7 +182,8 @@ function initQuagga(){
           product.image = data.product.image_front_small_url || '';
         }
       }catch(err){console.warn('Fetch failed',err);}
-      scanHistory.unshift(product);
+
+      scanHistory = scanHistory.map(h=>h.barcode===code?product:h);
       saveData();
       renderHistory();
     }
