@@ -3,33 +3,39 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Smart Pantry - Full Prototype</title>
+<title>Smart Pantry Prototype</title>
 <style>
-body{font-family:system-ui,-apple-system,sans-serif;margin:0;padding:16px;background:#f2f4f7;color:#111;}
-.wrap{max-width:960px;margin:auto;}
-header{display:flex;align-items:center;gap:12px;flex-wrap:wrap;}
-header h1{margin:0;font-size:20px;}
-.card{background:#fafafa;border-radius:10px;padding:12px;box-shadow:0 1px 4px rgba(0,0,0,0.06);margin-bottom:12px;}
-video{width:100%;border-radius:8px;background:#000;}
-button{background:#333;color:#fff;border:none;padding:6px 10px;border-radius:6px;cursor:pointer;}
-button.buy{background:green;}
-.small{font-size:13px;color:#666;}
-.history-item,.inv-item{display:flex;gap:10px;align-items:center;padding:8px;border-radius:8px;margin-bottom:8px;background:white;}
-.history-item img,.inv-item img{width:56px;height:56px;object-fit:cover;border-radius:6px;}
+/* Reset & base */
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Segoe UI',Roboto,Arial,sans-serif;background:#f5f7fa;color:#333;}
+.wrap{max-width:1000px;margin:auto;padding:16px;}
+h1,h3{margin-bottom:8px;}
+.card{background:#fff;border-radius:12px;padding:16px;margin-bottom:16px;box-shadow:0 3px 10px rgba(0,0,0,0.08);}
+video{width:100%;border-radius:12px;background:#000;}
+button{padding:6px 12px;border:none;border-radius:6px;cursor:pointer;color:#fff;background:#007bff;transition:0.2s;}
+button:hover{opacity:0.9;}
+button.buy{background:#28a745;}
+.small{font-size:13px;color:#555;}
+.history-item,.inv-item{display:flex;gap:12px;align-items:center;padding:10px;border-radius:10px;margin-bottom:10px;background:#fdfdfd;transition:0.2s;}
+.history-item:hover,.inv-item:hover{background:#f0f8ff;}
+.history-item img,.inv-item img{width:60px;height:60px;object-fit:cover;border-radius:8px;}
 .color-good{background:#d4f7d4;}
 .color-warn{background:#fff3cd;}
 .color-bad{background:#ffd6d6;}
-.modal{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.4);justify-content:center;align-items:center;}
-.modal-content{background:#fff;padding:16px;border-radius:10px;width:90%;max-width:400px;position:relative;}
-.modal-content label{display:block;margin-top:8px;}
-.modal-close{position:absolute;top:8px;right:8px;cursor:pointer;font-weight:bold;}
-#camera-error{color:red;text-align:center;padding:12px;}
+.modal{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);justify-content:center;align-items:center;z-index:1000;}
+.modal-content{background:#fff;padding:20px;border-radius:12px;width:90%;max-width:450px;position:relative;box-shadow:0 5px 20px rgba(0,0,0,0.2);}
+.modal-content label{display:block;margin-top:12px;font-weight:500;}
+.modal-close{position:absolute;top:10px;right:14px;font-size:22px;font-weight:bold;cursor:pointer;color:#555;}
+#camera-error{text-align:center;color:red;margin-top:8px;}
+.product-desc{font-size:13px;color:#666;margin-top:4px;}
+.deals-item{margin-bottom:8px;display:flex;align-items:center;gap:8px;}
+.deals-item button{margin-left:auto;}
 </style>
 </head>
 <body>
 <div class="wrap">
-<header>
-  <h1>📦 Smart Pantry Prototype</h1>
+<header style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;">
+  <h1>📦 Smart Pantry</h1>
   <div class="small" id="current-time"></div>
 </header>
 
@@ -56,12 +62,14 @@ button.buy{background:green;}
 </div>
 </div>
 
+<!-- Modal -->
 <div class="modal" id="modal">
 <div class="modal-content">
 <span class="modal-close" id="modal-close">&times;</span>
 <h3>Edit Item</h3>
 <label>Title: <input type="text" id="modal-title"></label>
 <label>Brand: <input type="text" id="modal-brand"></label>
+<label>Description: <input type="text" id="modal-desc"></label>
 <label>Quantity: <input type="number" id="modal-qty"></label>
 <label>Expiry: <input type="date" id="modal-expiry"></label>
 <label>Storage Location: 
@@ -79,8 +87,8 @@ button.buy{background:green;}
 
 <script src="https://unpkg.com/quagga/dist/quagga.min.js"></script>
 <script>
+// DOM elements
 const video=document.getElementById('video');
-const cameraError=document.getElementById('camera-error');
 const E={
   historyList:document.getElementById('history-list'),
   inventoryList:document.getElementById('inventory-list'),
@@ -94,17 +102,26 @@ const E={
   modalExpiry:document.getElementById('modal-expiry'),
   modalLocation:document.getElementById('modal-location'),
   modalImage:document.getElementById('modal-image'),
-  modalStorageImage:document.getElementById('modal-storage-image')
+  modalStorageImage:document.getElementById('modal-storage-image'),
+  modalDesc:document.getElementById('modal-desc')
 };
 
 let scanHistory=JSON.parse(localStorage.getItem('scanHistory')||'[]');
 let inventory=JSON.parse(localStorage.getItem('inventory')||'[]');
 let editIndex=null;
 
+// Fake products DB for prototype
+const fakeProducts={
+  "0123456789012":{title:"Milk",brand:"DairyFarm",desc:"1L whole milk",image:"https://via.placeholder.com/60?text=Milk"},
+  "0123456789013":{title:"Eggs",brand:"FarmFresh",desc:"12 large eggs",image:"https://via.placeholder.com/60?text=Eggs"},
+  "0123456789014":{title:"Butter",brand:"Creamy",desc:"250g unsalted butter",image:"https://via.placeholder.com/60?text=Butter"},
+  "0123456789015":{title:"Orange Juice",brand:"CitrusCo",desc:"1L orange juice",image:"https://via.placeholder.com/60?text=OJ"}
+};
+
 // Save localStorage
 function saveData(){localStorage.setItem('scanHistory',JSON.stringify(scanHistory));localStorage.setItem('inventory',JSON.stringify(inventory));}
 
-// Show current time
+// Time
 function updateTime(){document.getElementById('current-time').textContent='Current: '+new Date().toLocaleString();}
 setInterval(updateTime,1000); updateTime();
 
@@ -120,8 +137,8 @@ function colorForItem(item){
 function renderHistory(){
   E.historyList.innerHTML=scanHistory.length?scanHistory.map((h,i)=>`
     <div class="history-item">
-      ${h.image?`<img src="${h.image}">`:`<div style="width:56px;height:56px;background:#eee;border-radius:6px;display:flex;align-items:center;justify-content:center">?</div>`}
-      <div style="flex:1"><strong>${h.title}</strong><div class="small">${h.brand||''}</div><div class="small">UPC:${h.barcode}</div></div>
+      <img src="${h.image||'https://via.placeholder.com/60'}">
+      <div style="flex:1"><strong>${h.title}</strong><div class="product-desc">${h.desc||''}</div><div class="small">${h.brand||''} | UPC:${h.barcode}</div></div>
       <div><button onclick="addToInventory(${i})">Add</button></div>
     </div>`).join(''):'<div class="small">No scans yet</div>';
 }
@@ -131,10 +148,11 @@ function renderInventory(){
   E.inventoryList.innerHTML=inventory.length?inventory.map((item,i)=>{
     const cls=colorForItem(item);
     return `<div class="inv-item ${cls}">
-      ${item.image?`<img src="${item.image}">`:`<div style="width:56px;height:56px;background:#eee;border-radius:6px;display:flex;align-items:center;justify-content:center">?</div>`}
-      <div style="flex:1"><strong>${item.title}</strong><div class="small">${item.brand||''}</div>
-        <div class="small">Qty:${item.quantity} Exp:${item.expiry||'—'} Loc:${item.location||'—'}</div>
-        ${item.storageImage?`<img src="${item.storageImage}" style="width:56px;height:56px;margin-top:4px;border-radius:6px;">`:''}
+      <img src="${item.image||'https://via.placeholder.com/60'}">
+      <div style="flex:1"><strong>${item.title}</strong>
+        <div class="product-desc">${item.desc||''}</div>
+        <div class="small">${item.brand||''} | Qty:${item.quantity} Exp:${item.expiry||'—'} Loc:${item.location||'—'}</div>
+        ${item.storageImage?`<img src="${item.storageImage}" style="width:60px;height:60px;margin-top:4px;border-radius:8px;">`:''}
       </div>
       <div>
         <button onclick="openModal(${i})">Edit</button>
@@ -145,9 +163,9 @@ function renderInventory(){
   renderDeals();
 }
 
-// Render deals
+// Deals
 function renderDeals(){
-  E.deals.innerHTML=inventory.map(i=>`<div>💰 ${i.title} - <a href="https://flipp.com/search?q=${encodeURIComponent(i.title)}" target="_blank"><button class="buy">Buy Now</button></a></div>`).join('') || 'No items';
+  E.deals.innerHTML=inventory.map(i=>`<div class="deals-item">💰 ${i.title} - <a href="https://flipp.com/search?q=${encodeURIComponent(i.title)}" target="_blank"><button class="buy">Buy Now</button></a></div>`).join('') || 'No items';
 }
 
 // Add to inventory
@@ -155,19 +173,19 @@ function addToInventory(idx){
   const hist=scanHistory[idx];
   const found=inventory.find(i=>i.barcode===hist.barcode);
   if(found){found.quantity=(found.quantity||0)+1;} 
-  else {inventory.unshift({...hist,quantity:1,expiry:randomExpiry(),image:hist.image||'https://via.placeholder.com/56',location:'Fridge',storageImage:'https://via.placeholder.com/56'});}
+  else {inventory.unshift({...hist,quantity:1,expiry:randomExpiry(),location:'Fridge',storageImage:'https://via.placeholder.com/60'});}
   saveData(); renderInventory();
   notifyIfExpiring(inventory.find(i=>i.barcode===hist.barcode));
 }
 
-// Remove item
+// Remove
 function removeItem(idx){
-  if(confirm(`Remove "${inventory[idx].title}" from inventory?`)){
+  if(confirm(`Remove "${inventory[idx].title}"?`)){
     inventory.splice(idx,1); saveData(); renderInventory();
   }
 }
 
-// Modal edit
+// Modal
 function openModal(idx){
   editIndex=idx;
   const item=inventory[idx];
@@ -178,6 +196,7 @@ function openModal(idx){
   E.modalLocation.value=item.location||'Fridge';
   E.modalImage.value=item.image||'';
   E.modalStorageImage.value=item.storageImage||'';
+  E.modalDesc.value=item.desc||'';
   E.modal.style.display='flex';
 }
 E.modalClose.onclick=()=>E.modal.style.display='none';
@@ -185,6 +204,7 @@ E.modalSave.onclick=()=>{
   const item=inventory[editIndex];
   item.title=E.modalTitle.value;
   item.brand=E.modalBrand.value;
+  item.desc=E.modalDesc.value;
   item.quantity=parseInt(E.modalQty.value)||1;
   item.expiry=E.modalExpiry.value||null;
   item.location=E.modalLocation.value||'Fridge';
@@ -195,13 +215,10 @@ E.modalSave.onclick=()=>{
   notifyIfExpiring(item);
 }
 
-// Random expiry (1-14 days)
-function randomExpiry(){
-  const d=new Date(); d.setDate(d.getDate()+Math.floor(Math.random()*14)+1);
-  return d.toISOString().split('T')[0];
-}
+// Random expiry
+function randomExpiry(){const d=new Date(); d.setDate(d.getDate()+Math.floor(Math.random()*14)+1); return d.toISOString().split('T')[0];}
 
-// Notification
+// Notifications
 function notifyIfExpiring(item){
   if(Notification.permission!=='granted') Notification.requestPermission();
   const days=item.expiry?Math.round((new Date(item.expiry)-new Date())/(24*60*60*1000)):null;
@@ -210,47 +227,29 @@ function notifyIfExpiring(item){
   }
 }
 
-// Quagga scanner (keep working logic)
+// Quagga scanner with fake products
 function initQuagga(){
-  Quagga.init({
-    inputStream:{name:"Live",type:"LiveStream",target:video,constraints:{facingMode:"environment"}},
-    decoder:{readers:["ean_reader","upc_reader","upc_e_reader"]}
-  },function(err){if(err){console.error(err);cameraError.textContent="Scanner init failed";return;} Quagga.start();});
-
+  Quagga.init({inputStream:{name:"Live",type:"LiveStream",target:video,constraints:{facingMode:"environment"}},decoder:{readers:["ean_reader","upc_reader","upc_e_reader"]}},function(err){if(err){console.error(err);return;}Quagga.start();});
   let last=null;
   Quagga.onDetected(r=>{
     const code=r?.codeResult?.code;
-    if(!code || code===last) return;
-    last=code; setTimeout(()=>last=null,1500);
-
+    if(!code || code===last) return; last=code; setTimeout(()=>last=null,1500);
     if(!scanHistory.find(h=>h.barcode===code)){
-      const product={
-        barcode: code,
-        title: `Product ${code}`,
-        brand: `Brand ${code.slice(-3)}`,
-        image: 'https://via.placeholder.com/56'
-      };
-      scanHistory.unshift(product);
-      saveData();
-      renderHistory();
+      const p=fakeProducts[code]||{title:`Product ${code}`,brand:`Brand ${code.slice(-3)}`,desc:'Description here',image:'https://via.placeholder.com/60'};
+      scanHistory.unshift({...p,barcode:code});
+      saveData(); renderHistory();
     }
   });
 }
 
-// Start camera
+// Camera
 function startCamera(){
-  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
-    cameraError.textContent="Camera not supported"; return;
-  }
-  navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}})
-    .then(stream=>{video.srcObject=stream; video.onloadedmetadata=()=>{video.play(); cameraError.textContent=""; initQuagga();};})
-    .catch(err=>{console.error(err); cameraError.textContent="Camera access denied";});
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){document.getElementById('camera-error').textContent="Camera not supported"; return;}
+  navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}}).then(stream=>{video.srcObject=stream; video.onloadedmetadata=()=>{video.play(); initQuagga(); document.getElementById('camera-error').textContent='';}}).catch(err=>{console.error(err);document.getElementById('camera-error').textContent="Camera access denied";});
 }
 
 // INIT
-startCamera();
-renderHistory();
-renderInventory();
+startCamera(); renderHistory(); renderInventory();
 </script>
 </body>
 </html>
