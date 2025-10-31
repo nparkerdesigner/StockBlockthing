@@ -31,7 +31,7 @@ button{background:#333;color:#fff;border:none;padding:8px 10px;border-radius:6px
 
 <div class="card">
 <video id="video" playsinline autoplay></video>
-<div id="camera-error" class="small"></div>
+<div id="camera-error" class="small">Initializing camera...</div>
 </div>
 
 <div class="card" id="product-info"><div class="small center">Scan a barcode to begin</div></div>
@@ -78,32 +78,35 @@ const SPOONACULAR_API_KEY = ''; // optional
 const video=document.getElementById('video');
 const cameraError=document.getElementById('camera-error');
 
-const E = {
-  historyList: document.getElementById('history-list'),
-  inventoryList: document.getElementById('inventory-list'),
-  recipes: document.getElementById('recipes'),
-  deals: document.getElementById('deals'),
-  modal: document.getElementById('modal'),
-  modalClose: document.getElementById('modal-close'),
-  modalSave: document.getElementById('modal-save'),
-  modalTitle: document.getElementById('modal-title'),
-  modalBrand: document.getElementById('modal-brand'),
-  modalQty: document.getElementById('modal-qty'),
-  modalExpiry: document.getElementById('modal-expiry'),
-  modalImage: document.getElementById('modal-image')
+const E={
+  historyList:document.getElementById('history-list'),
+  inventoryList:document.getElementById('inventory-list'),
+  recipes:document.getElementById('recipes'),
+  deals:document.getElementById('deals'),
+  modal:document.getElementById('modal'),
+  modalClose:document.getElementById('modal-close'),
+  modalSave:document.getElementById('modal-save'),
+  modalTitle:document.getElementById('modal-title'),
+  modalBrand:document.getElementById('modal-brand'),
+  modalQty:document.getElementById('modal-qty'),
+  modalExpiry:document.getElementById('modal-expiry'),
+  modalImage:document.getElementById('modal-image')
 };
 
 let scanHistory=JSON.parse(localStorage.getItem('scanHistory')||'[]');
 let inventory=JSON.parse(localStorage.getItem('inventory')||'[]');
 let editIndex=null;
 
-function saveData(){localStorage.setItem('scanHistory',JSON.stringify(scanHistory));localStorage.setItem('inventory',JSON.stringify(inventory));}
+function saveData(){
+  localStorage.setItem('scanHistory',JSON.stringify(scanHistory));
+  localStorage.setItem('inventory',JSON.stringify(inventory));
+}
 
 function colorForItem(item){
   const days=item.expiry?Math.round((new Date(item.expiry)-new Date())/(24*60*60*1000)):null;
-  if((days!==null && days<0) || item.quantity<=0)return'color-bad';
-  if((days!==null && days<=3) || item.quantity<=2)return'color-warn';
-  return'color-good';
+  if((days!==null && days<0) || item.quantity<=0) return 'color-bad';
+  if((days!==null && days<=3) || item.quantity<=2) return 'color-warn';
+  return 'color-good';
 }
 
 function renderHistory(){
@@ -152,11 +155,8 @@ E.modalSave.onclick=()=>{
   item.quantity=parseInt(E.modalQty.value)||1;
   item.expiry=E.modalExpiry.value||null;
   item.image=E.modalImage.value||'';
-  saveData();
-  E.modal.style.display='none';
-  renderInventory();
-  refreshRecipes();
-  refreshDeals();
+  saveData(); E.modal.style.display='none';
+  renderInventory(); refreshRecipes(); refreshDeals();
 }
 
 // Quagga Scanner
